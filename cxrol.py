@@ -2,6 +2,7 @@ import streamlit as st
 import random
 import base64
 import uuid
+import json
 import streamlit.components.v1 as components
 
 # Set page config for a gaming-themed layout
@@ -28,14 +29,15 @@ country_data = {
 }
 
 # Track used IPs to ensure uniqueness
-used_ips = set()
+if "used_ips" not in st.session_state:
+    st.session_state.used_ips = set()
 
 def generate_unique_ip(ip_pool):
-    available_ips = [ip for ip in ip_pool if ip not in used_ips]
+    available_ips = [ip for ip in ip_pool if ip not in st.session_state.used_ips]
     if not available_ips:
         return None  # Fallback if pool is exhausted
     ip = random.choice(available_ips)
-    used_ips.add(ip)
+    st.session_state.used_ips.add(ip)
     return ip
 
 # Generate WireGuard config
@@ -67,229 +69,113 @@ PersistentKeepalive = 25
         b64 = base64.b64encode(f.read()).decode()
     return b64, filename
 
-# React-based UI with Tailwind CSS and Font Awesome
+# Prepare data for JavaScript
+countries = list(country_data.keys())
+dns_data = {k: v["dns"] for k, v in country_data.items()}
+countries_json = json.dumps(countries)
+dns_data_json = json.dumps(dns_data)
+
+# Streamlit UI
+st.markdown(
+    """
+    <h1 class="text-4xl font-bold text-center text-red-600 drop-shadow-lg">
+        <i class="fas fa-gamepad mr-2"></i>GrokVPN-Gamer
+    </h1>
+    """,
+    unsafe_allow_html=True
+)
+st.markdown("---")
+st.markdown("### 🛠️ Generate WireGuard Config")
+
+# Form for config generation
+with st.form("config_form"):
+    operator = st.text_input("Operator Name", placeholder="Enter operator name")
+    country = st.selectbox("Country", countries)
+    volume = st.text_input("Config Volume", placeholder="e.g., 5GB")
+    days = st.text_input("Days", placeholder="e.g., 30")
+    users = st.selectbox("Number of Users", [1, 2, 3, 4, 5, 6])
+    config_name = st.text_input("Config File Name", value=f"grokvpn_{uuid.uuid4().hex[:8]}", placeholder="Enter config name")
+
+    submitted = st.form_submit_button("Generate Config", type="primary")
+
+if submitted:
+    b64, filename = generate_config(operator, country, volume, days, users, config_name)
+    if b64:
+        href = f'<a href="data:file/conf;base64,{b64}" download="{filename}" class="inline-block py-2 px-4 bg-red-600 text-white rounded hover:bg-red-700"><i class="fas fa-download mr-2"></i>Download {filename}</a>'
+        st.markdown(href, unsafe_allow_html=True)
+        st.success("✅ Configuration created successfully!")
+    else:
+        st.error(f"❌ {filename}")
+
+# DNS Performance Table
+st.markdown("---")
+st.markdown("### 🌐 DNS Game Performance")
+
 components.html(
     f"""
     <html>
     <head>
-        <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
         <script src="https://cdn.tailwindcss.com"></script>
         <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
-        <script src="https://cdn.jsdelivr.net/npm/babel-standalone@7.22.5/babel.min.js"></script>
     </head>
     <body class="bg-gray-900 text-white font-sans">
-        <div id="root"></div>
-        <script type="text/babel">
-            function App() {{
-                const [operator, setOperator] = React.useState("");
-                const [country, setCountry] = React.useState("{list(country_data.keys())[0]}");
-                const [volume, setVolume] = React.useState("");
-                const [days, setDays] = React.useState("");
-                const [users, setUsers] = React.useState(1);
-                const [configName, setConfigName] = React.useState("grokvpn_{uuid.uuid4().hex[:8]}");
-                const [result, setResult] = React.useState(null);
-                const [dnsData, setDnsData] = React.useState([]);
+        <div class="max-w-4xl mx-auto p-6">
+            <button id="refresh-btn" class="py-2 px-4 bg-red-600 text-white rounded hover:bg-red-700 transition duration-300 transform hover:scale-105">
+                <i class="fas fa-sync-alt mr-2"></i>Refresh DNS
+            </button>
+            <table class="w-full mt-4 border-collapse bg-gray-800 rounded-lg shadow-xl shadow-red-500/50">
+                <thead>
+                    <tr class="bg-gray-900">
+                        <th class="p-3 text-left">Country</th>
+                        <th class="p-3 text-left">DNS</th>
+                        <th class="p-3 text-left">Ping</th>
+                        <th class="p-3 text-left">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="dns-table"></tbody>
+            </table>
+        </div>
+        <script>
+            const countries = {countries_json};
+            const dnsData = {dns_data_json};
 
-                const countries = {JSON.stringify(list(country_data.keys()))};
-                const countryData = {JSON.stringify({k: v["dns"] for k, v in country_data.items()})};
-
-                const generatePing = () => Math.floor(Math.random() * 281) + 20;
-                const getStatus = (ping) => {{
-                    if (ping <= 100) return ["Great for Gaming ✅", "text-green-500"];
-                    if (ping <= 200) return ["Average ✴️", "text-yellow-500"];
-                    return ["Bad ❌", "text-red-500"];
-                }};
-
-                const generateDNS = () => {{
-                    const newData = countries.map(c => {{
-                        const ping = generatePing();
-                        const [status, cls] = getStatus(ping);
-                        return {{ name: c, dns: countryData[c][Math.floor(Math.random() * countryData[c].length)], ping, status, cls }};
-                    }});
-                    setDnsData(newData);
-                }};
-
-                React.useEffect(() => {{ generateDNS(); }}, []);
-
-                const handleSubmit = async (e) => {{
-                    e.preventDefault();
-                    const response = await fetch("/_stcore/streamlit", {{
-                        method: "POST",
-                        headers: {{ "Content-Type": "application/json" }},
-                        body: JSON.stringify({{
-                            type: "form_submit",
-                            data: {{ operator, country, volume, days, users, config_name: configName }}
-                        }})
-                    }});
-                    const result = await response.json();
-                    setResult(result);
-                }};
-
-                return (
-                    <div className="min-h-screen bg-gray-900 p-6">
-                        <h1 className="text-4xl font-bold text-center text-red-600 drop-shadow-lg">
-                            <i className="fas fa-gamepad mr-2"></i>GrokVPN-Gamer
-                        </h1>
-                        <div className="max-w-2xl mx-auto mt-8 p-6 bg-gray-800 rounded-lg shadow-xl shadow-red-500/50">
-                            <form onSubmit={{handleSubmit}} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300">
-                                        <i className="fas fa-user mr-2"></i>Operator Name
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={{operator}}
-                                        onChange={{(e) => setOperator(e.target.value)}}
-                                        className="mt-1 w-full p-2 bg-gray-700 text-white rounded focus:ring-2 focus:ring-red-500"
-                                        placeholder="Enter operator name"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300">
-                                        <i className="fas fa-globe mr-2"></i>Country
-                                    </label>
-                                    <select
-                                        value={{country}}
-                                        onChange={{(e) => setCountry(e.target.value)}}
-                                        className="mt-1 w-full p-2 bg-gray-700 text-white rounded focus:ring-2 focus:ring-red-500"
-                                    >
-                                        {{countries.map(c => (
-                                            <option key={{c}} value={{c}}>{{c}}</option>
-                                        ))}}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300">
-                                        <i className="fas fa-database mr-2"></i>Config Volume
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={{volume}}
-                                        onChange={{(e) => setVolume(e.target.value)}}
-                                        className="mt-1 w-full p-2 bg-gray-700 text-white rounded focus:ring-2 focus:ring-red-500"
-                                        placeholder="e.g., 5GB"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300">
-                                        <i className="fas fa-calendar mr-2"></i>Days
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={{days}}
-                                        onChange={{(e) => setDays(e.target.value)}}
-                                        className="mt-1 w-full p-2 bg-gray-700 text-white rounded focus:ring-2 focus:ring-red-500"
-                                        placeholder="e.g., 30"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300">
-                                        <i className="fas fa-users mr-2"></i>Number of Users
-                                    </label>
-                                    <select
-                                        value={{users}}
-                                        onChange={{(e) => setUsers(Number(e.target.value))}}
-                                        className="mt-1 w-full p-2 bg-gray-700 text-white rounded focus:ring-2 focus:ring-red-500"
-                                    >
-                                        {{[1, 2, 3, 4, 5, 6].map(n => (
-                                            <option key={{n}} value={{n}}>{{n}}</option>
-                                        ))}}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300">
-                                        <i className="fas fa-file mr-2"></i>Config File Name
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={{configName}}
-                                        onChange={{(e) => setConfigName(e.target.value)}}
-                                        className="mt-1 w-full p-2 bg-gray-700 text-white rounded focus:ring-2 focus:ring-red-500"
-                                        placeholder="Enter config name"
-                                    />
-                                </div>
-                                <button
-                                    type="submit"
-                                    className="w-full py-2 px-4 bg-red-600 text-white font-bold rounded hover:bg-red-700 transition duration-300 transform hover:scale-105"
-                                >
-                                    <i className="fas fa-bolt mr-2"></i>Generate Config
-                                </button>
-                            </form>
-                            {{result && (
-                                <div className="mt-4 p-4 bg-gray-700 rounded">
-                                    {{result.success ? (
-                                        <>
-                                            <p className="text-green-500"><i className="fas fa-check-circle mr-2"></i>Configuration created!</p>
-                                            <a
-                                                href={{`data:file/conf;base64,${{result.b64}}`}}
-                                                download={{result.filename}}
-                                                className="inline-block mt-2 py-2 px-4 bg-red-600 text-white rounded hover:bg-red-700"
-                                            >
-                                                <i className="fas fa-download mr-2"></i>Download {{result.filename}}
-                                            </a>
-                                        </>
-                                    ) : (
-                                        <p className="text-red-500"><i className="fas fa-exclamation-circle mr-2"></i>{{result.message}}</p>
-                                    )}}
-                                </div>
-                            )}}
-                        </div>
-                        <div className="mt-8 p-6 bg-gray-800 rounded-lg shadow-xl shadow-red-500/50">
-                            <h2 className="text-2xl font-bold text-red-600">
-                                <i className="fas fa-tachometer-alt mr-2"></i>DNS Game Performance
-                            </h2>
-                            <button
-                                onClick={{generateDNS}}
-                                className="mt-4 py-2 px-4 bg-red-600 text-white rounded hover:bg-red-700 transition duration-300 transform hover:scale-105"
-                            >
-                                <i className="fas fa-sync-alt mr-2"></i>Refresh DNS
-                            </button>
-                            <table className="w-full mt-4 border-collapse">
-                                <thead>
-                                    <tr className="bg-gray-900">
-                                        <th className="p-3 text-left">Country</th>
-                                        <th className="p-3 text-left">DNS</th>
-                                        <th className="p-3 text-left">Ping</th>
-                                        <th className="p-3 text-left">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {{dnsData.map(data => (
-                                        <tr key={{data.name}} className="border-t border-gray-700">
-                                            <td className="p-3">{{data.name}}</td>
-                                            <td className="p-3">{{data.dns}}</td>
-                                            <td className={{data.cls}}>{{data.ping}} ms</td>
-                                            <td className={{data.cls}}>{{data.status}}</td>
-                                        </tr>
-                                    ))}}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                );
+            function getRandom(min, max) {{
+                return Math.floor(Math.random() * (max - min + 1)) + min;
             }}
 
-            ReactDOM.render(<App />, document.getElementById("root"));
+            function generatePing() {{
+                return getRandom(20, 300);
+            }}
+
+            function getStatus(ping) {{
+                if (ping <= 100) return ["Great for Gaming ✅", "text-green-500"];
+                if (ping <= 200) return ["Average ✴️", "text-yellow-500"];
+                return ["Bad ❌", "text-red-500"];
+            }}
+
+            function generateDNS() {{
+                const tbody = document.querySelector("#dns-table");
+                tbody.innerHTML = "";
+                countries.forEach(c => {{
+                    const ping = generatePing();
+                    const [status, cls] = getStatus(ping);
+                    const dns = dnsData[c][Math.floor(Math.random() * dnsData[c].length)];
+                    tbody.innerHTML += `
+                        <tr class="border-t border-gray-700">
+                            <td class="p-3">${{c}}</td>
+                            <td class="p-3">${{dns}}</td>
+                            <td class="${{cls}}">${{ping}} ms</td>
+                            <td class="${{cls}}">${{status}}</td>
+                        </tr>
+                    `;
+                }});
+            }}
+
+            document.getElementById("refresh-btn").addEventListener("click", generateDNS);
+            generateDNS();
         </script>
     </body>
     </html>
     """,
-    height=1200
+    height=500
 )
-
-# Handle form submission (Streamlit backend)
-if "form_submit" in st.session_state:
-    data = st.session_state.get("form_submit", {})
-    b64, filename = generate_config(
-        data.get("operator", ""),
-        data.get("country", list(country_data.keys())[0]),
-        data.get("volume", ""),
-        data.get("days", ""),
-        data.get("users", 1),
-        data.get("config_name", f"grokvpn_{uuid.uuid4().hex[:8]}")
-    )
-    if b64:
-        st.session_state["result"] = {"success": True, "b64": b64, "filename": filename}
-    else:
-        st.session_state["result"] = {"success": False, "message": filename}
