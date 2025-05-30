@@ -79,7 +79,7 @@ dns_data_json = json.dumps(dns_data)
 st.markdown(
     """
     <h1 class="text-4xl font-bold text-center text-red-600 drop-shadow-lg">
-        <i class="fas fa-gamepad mr-2"></i>GrokVPN-Gamer
+        <i class="fas fa-gamepad mr-2"></i>Cxrol
     </h1>
     """,
     unsafe_allow_html=True
@@ -94,7 +94,7 @@ with st.form("config_form"):
     volume = st.text_input("Config Volume", placeholder="e.g., 5GB")
     days = st.text_input("Days", placeholder="e.g., 30")
     users = st.selectbox("Number of Users", [1, 2, 3, 4, 5, 6])
-    config_name = st.text_input("Config File Name", value=f"grokvpn_{uuid.uuid4().hex[:8]}", placeholder="Enter config name")
+    config_name = st.text_input("Config File Name", value=f"Cxrol_{uuid.uuid4().hex[:8]}", placeholder="Enter config name")
 
     submitted = st.form_submit_button("Generate Config", type="primary")
 
