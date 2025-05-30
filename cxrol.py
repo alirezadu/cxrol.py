@@ -6,7 +6,7 @@ import json
 import streamlit.components.v1 as components
 
 # Set page config for a gaming-themed layout
-st.set_page_config(page_title="GrokVPN-Gamer", page_icon="🎮", layout="wide")
+st.set_page_config(page_title="Cxrol", page_icon="🎮", layout="wide")
 
 # Country-specific IP and DNS pools (realistic, non-overlapping)
 country_data = {
